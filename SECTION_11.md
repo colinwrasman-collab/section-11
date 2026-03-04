@@ -1,10 +1,24 @@
 # Section 11 — AI Coach Protocol
 
-**Protocol Version:** 11.10  
-**Last Updated:** 2026-02-28
+**Protocol Version:** 11.11  
+**Last Updated:** 2026-03-04
 **License:** [MIT](https://opensource.org/licenses/MIT)
 
 ### Changelog
+
+**v11.11 — Phase Detection v2 (Dual-Stream Architecture):**
+- Phase detection rewritten from single-point snapshot to dual-stream architecture
+- Stream 1 (retrospective): 4-week lookback from `weekly_180d` — CTL slope, ACWR trend, hard-day density, monotony
+- Stream 2 (prospective): planned workouts + race calendar — planned TSS delta, race proximity, plan coverage
+- 8 phase states: Build, Base, Peak, Taper, **Deload** (new), Recovery, Overreached, null
+- Classification priority: Overreached → Taper → Peak → Deload → Build/Base (scored) → Recovery → null
+- Confidence model (high/medium/low) based on signal strength, data quality, stream agreement
+- Hysteresis: bias toward previous phase when scores are close, prevents phase flapping
+- Reason codes for full auditability (e.g., `RACE_IMMINENT_VOLUME_REDUCING`, `PLAN_GAP_NEXT_WEEK`)
+- `phase_detection` output object with basis, confidence, reason_codes; backward-compat `phase_detected`/`phase_triggers` preserved
+- Overreached fix: requires current-week ACWR >1.5 (not historical max); monotony threshold raised 2.0→2.5
+- Weekly tier enriched: `acwr`, `monotony` (5+ day guard), `intensity_basis_breakdown`, `phase_detected` per row
+- Old `_detect_phase` function removed
 
 **v11.10 — Hard Day HR Zone Fallback:**
 - Hard day counter now falls back to HR zones (`icu_hr_zone_times`) when power zones unavailable
@@ -273,21 +287,46 @@ The system continuously reflects the athlete’s true state — evolving natural
 
 ### Phase Detection Criteria
 
-To ensure deterministic phase classification, AI systems must evaluate the following trigger conditions when identifying the current training phase:
+Phase detection uses a **dual-stream architecture** combining retrospective training history with prospective calendar data. This replaces single-point snapshot classification and eliminates common mislabels (e.g., deload weeks classified as taper/recovery).
 
-| **Phase** | **Primary Triggers** | **Supporting Indicators** |
-|-----------|---------------------|---------------------------|
-| Base | CTL rising steadily, ACWR 0.8–1.0, Quality Intensity <15% (by time) or ≤1 hard day/week | Polarisation index ≥0.85, RI ≥0.8, Grey Zone <5% |
-| Build | ACWR 1.0–1.3, Quality Intensity 15–25% (by time) or 2 hard days/week | CTL slope positive, TSB neutral to slightly negative, Grey Zone <8% |
-| Peak | CTL plateau or slight decline, interval intensity at maximum | Specificity Score ≥0.85, TSB trending positive, 2–3 hard days/week |
-| Overreached | ACWR >1.3 OR Strain >3500 OR RI <0.6 for ≥3 days | HRV ↓>15%, Feel ≥4, Monotony >2.5 |
-| Taper | CTL declining 5–15%, TSB rising toward positive | Volume reduction 30–50%, intensity maintained, 1–2 hard days/week |
-| Recovery | TSB >+10, weekly load <50% of 4-week average | RI ≥0.85, HRV stable or improving, 0 hard days |
+**Stream 1 (Retrospective):** Rolling 4-week lookback from `weekly_180d` rows — CTL slope, ACWR trend, hard-day density, monotony trend.
 
-**Phase Transition Rules:**
-- Phase changes require ≥3 consecutive days of trigger conditions being met
-- Overreached state triggers immediate phase reassessment regardless of planned block
-- AI must cite specific trigger values when declaring phase transitions
+**Stream 2 (Prospective):** Next 7–14 days of planned workouts + race calendar — planned TSS delta, hard sessions planned, race proximity, plan coverage (current/next ISO week).
+
+**Phase States:**
+
+| **Phase** | **Classification Logic** | **Key Thresholds** |
+|-----------|------------------------|--------------------|
+| Overreached | Safety gate — triggers immediately when detected | Current-week ACWR >1.5, or elevated monotony (>2.5) + ACWR >1.3 + rising trend |
+| Taper | Race-anchored — requires race in calendar | Race (A/B priority) within 14 days + volume reducing (planned TSS ≤80% of recent avg) |
+| Peak | Race approaching, fitness at cycle high | Race within 21 days + CTL within 5% of lookback max + volume NOT yet reducing + positive CTL slope |
+| Deload | Calendar-driven load reduction within Build block | Build history (rising CTL + ≥1.5 hard days/week over 3+ weeks) + planned TSS ≤80% + no hard sessions planned. Confirmed if next week load resumes (≥80%). Medium confidence if next-week plan is empty. |
+| Build | Scored — CTL rising + sustained hard days | CTL slope >1.0, hard-day avg ≥1.5, ACWR rising/stable. Planned week continues pattern (hard sessions ≥2). |
+| Base | Scored — CTL stable + low hard days | CTL slope −1.0 to +1.0, hard-day avg ≤1.5, ACWR stable. |
+| Recovery | Residual — declining load, no structured pattern | Declining CTL + <0.5 hard days/week + no Build history + no race proximity |
+| null | Insufficient or conflicting data | <3 weeks lookback, Build/Base scores tied, streams conflict |
+
+**Classification Priority Order:** Overreached → Taper → Peak → Deload → Build/Base (scored) → Recovery → null.
+
+**Build/Base Scoring:** When neither safety gates nor calendar-anchored phases apply, Build and Base are scored from CTL slope, hard-day density, ACWR trend, and planned session intensity. The phase with a margin ≥2 wins. Margins <2 apply hysteresis (bias toward previous phase). Tied scores with no previous phase → null.
+
+**Confidence Model:**
+
+| **Confidence** | **Conditions** |
+|---------------|---------------|
+| high | Strong signal (margin ≥3), good data quality, streams agree |
+| medium | Moderate signal (margin ≥2) or good data quality but weaker signal |
+| low | Weak signal, poor data quality (<3 weeks), conflicting streams, or null phase |
+
+Confidence is downgraded by: poor data quality (HR-only majority in lookback), empty plan coverage (no planned workouts), partial-week data.
+
+**Hysteresis:** If the previous phase is among the top-2 candidates and not contradicted by data, it is preferred. This prevents phase flapping between similar states (e.g., Build ↔ Base at the margin).
+
+**Deload→Build Transition:** When `previous_phase` is Deload, the classifier uses planned workout content (hard sessions planned) rather than TSS delta, because the trailing 3-week average includes the deload week and produces unreliable ratios.
+
+**Reason Codes:** Every classification includes machine-readable reason codes for auditability (e.g., `RACE_IMMINENT_VOLUME_REDUCING`, `BUILD_HISTORY_REDUCED_LOAD_REBOUND_CONFIRMED`, `PLAN_GAP_NEXT_WEEK`, `INSUFFICIENT_LOOKBACK`).
+
+**Output Structure:** See `phase_detection` in Field Definitions below.
 
 ---
 
@@ -1511,7 +1550,7 @@ This subsection defines the formal self-validation and audit metadata structure 
   "validation_metadata": {
     "data_source_fetched": true,
     "json_fetch_status": "success",
-    "protocol_version": "11.10",
+    "protocol_version": "11.11",
     "checklist_passed": [1, 2, 3, 4, 5, 6, "6b", 7, 8, 9, 10],
     "checklist_failed": [],
     "data_timestamp": "2026-01-13T22:32:05Z",
@@ -1525,7 +1564,34 @@ This subsection defines the formal self-validation and audit metadata structure 
     "frameworks_cited": ["Seiler 80/20", "Gabbett ACWR"],
     "recommendation_count": 3,
     "phase_detected": "Build",
-    "phase_triggers_met": ["ACWR 1.12", "Hard days 2/week", "CTL slope +0.8"],
+    "phase_triggers": [],
+    "phase_detection": {
+      "phase": "Build",
+      "confidence": "medium",
+      "reason_codes": [],
+      "basis": {
+        "stream_1": {
+          "ctl_slope": 0.7,
+          "acwr_trend": "falling",
+          "hard_day_pattern": 1.8,
+          "weeks_available": 4
+        },
+        "stream_2": {
+          "planned_tss_delta": 0.93,
+          "hard_sessions_planned": 2,
+          "race_proximity": null,
+          "next_week_load": 1.19,
+          "plan_coverage_current_week": 1.2,
+          "plan_coverage_next_week": 2.6
+        },
+        "data_quality": "good",
+        "stream_agreement": null
+      },
+      "previous_phase": "Build",
+      "phase_duration_weeks": 4,
+      "dossier_declared": null,
+      "dossier_agreement": null
+    },
     "seasonal_context": "Late Base / Build",
     "consistency_index": 0.92,
     "stress_tolerance": 4.2,
@@ -1570,8 +1636,20 @@ This subsection defines the formal self-validation and audit metadata structure 
 | `missing_inputs`               | array    | List of metrics that were unavailable                                               |
 | `frameworks_cited`             | array    | Scientific frameworks applied in reasoning                                          |
 | `recommendation_count`         | number   | Number of actionable recommendations provided                                       |
-| `phase_detected`               | string   | Current phase classification (Base/Build/Peak/Taper/Recovery/Overreached)           |
-| `phase_triggers_met`           | array    | Specific trigger conditions that determined phase classification                    |
+| `phase_detected`               | string/null | Backward-compat shortcut: current phase (Build/Base/Peak/Taper/Deload/Recovery/Overreached/null). Extracted from `phase_detection.phase`. |
+| `phase_triggers`               | array    | Backward-compat shortcut: reason codes from `phase_detection.reason_codes`.         |
+| `phase_detection`              | object   | Full phase detection v2 output (see sub-fields below).                              |
+| `phase_detection.phase`        | string/null | Classified phase: Build, Base, Peak, Taper, Deload, Recovery, Overreached, or null. |
+| `phase_detection.confidence`   | string   | "high" / "medium" / "low" — based on signal strength, data quality, stream agreement. |
+| `phase_detection.reason_codes` | array    | Machine-readable classification reasons (e.g., `RACE_IMMINENT_VOLUME_REDUCING`, `BUILD_HISTORY_REDUCED_LOAD_REBOUND_CONFIRMED`, `PLAN_GAP_NEXT_WEEK`, `INSUFFICIENT_LOOKBACK`). |
+| `phase_detection.basis.stream_1` | object | Retrospective features: `ctl_slope`, `acwr_trend`, `hard_day_pattern`, `weeks_available`. |
+| `phase_detection.basis.stream_2` | object | Prospective features: `planned_tss_delta`, `hard_sessions_planned`, `race_proximity`, `next_week_load`, `plan_coverage_current_week`, `plan_coverage_next_week`. |
+| `phase_detection.basis.data_quality` | string | "good" / "mixed" / "poor" — penalized by HR-only intensity basis, short lookback. |
+| `phase_detection.basis.stream_agreement` | boolean/null | Whether Stream 1 and Stream 2 suggested the same phase. null if either stream has no opinion. |
+| `phase_detection.previous_phase` | string/null | Phase from last weekly_180d row (feeds hysteresis).                              |
+| `phase_detection.phase_duration_weeks` | number | Consecutive weeks classified as current phase.                                 |
+| `phase_detection.dossier_declared` | string/null | Phase declared in athlete dossier (optional input).                            |
+| `phase_detection.dossier_agreement` | boolean/null | Whether detected phase matches dossier declaration.                           |
 | `seasonal_context`             | string   | Current position in annual training cycle                                           |
 | `consistency_index`            | number   | 7-day plan adherence ratio (0–1)                                                    |
 | `stress_tolerance`             | number   | Current load absorption capacity                                                    |
