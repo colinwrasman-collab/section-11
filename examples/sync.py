@@ -5812,6 +5812,22 @@ def _release_lockfile():
             pass  # Best effort cleanup
 
 
+def _rotate_log_if_needed():
+    """Rotate sync.log if over 1MB. Keeps the last 200 lines."""
+    try:
+        log_path = Path.cwd() / "sync.log"
+        if not log_path.exists():
+            return
+        if log_path.stat().st_size < 1_000_000:  # 1MB
+            return
+        with open(log_path, 'r') as f:
+            lines = f.readlines()
+        with open(log_path, 'w') as f:
+            f.writelines(lines[-200:])
+    except Exception:
+        pass  # Never block sync over a log issue
+
+
 def main():
     parser = argparse.ArgumentParser(description="Sync Intervals.icu data to GitHub or local file")
     parser.add_argument("--setup", action="store_true", help="Initial setup wizard")
@@ -5873,6 +5889,9 @@ def main():
     if args.generate_manifest:
         do_generate_manifest()
         return
+    
+    # Rotate sync.log if it's grown too large
+    _rotate_log_if_needed()
     
     # Lockfile: prevent overlapping runs (for automated timers)
     if args.lockfile:
