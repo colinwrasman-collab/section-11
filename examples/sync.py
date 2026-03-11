@@ -4,6 +4,11 @@ Intervals.icu → GitHub/Local JSON Export
 Exports training data for LLM access.
 Supports both automated GitHub sync and manual local export.
 
+Version 3.80 - --update orphan cleanup: detects and removes local files no longer in the upstream
+  manifest (e.g. files moved or deleted in a repo restructure). Runs after the pull step, shows
+  orphaned files with [removed from repo] tag, prompts for confirmation. Empty parent directories
+  cleaned up automatically. Skips manifest.json, .tmp files, and hidden files.
+
 Version 3.79 - Feel/RPE fix: removed feel from daily history rows (activity-level field, not wellness),
   added RPE to weekly history tier, correct activity-sourced aggregation with counts.
   - _build_daily_rows: removed incorrect feel flattening to daily scalar
@@ -93,7 +98,7 @@ class IntervalsSync:
     HISTORY_FILE = "history.json"
     UPSTREAM_REPO = "CrankAddict/section-11"
     CHANGELOG_FILE = "changelog.json"
-    VERSION = "3.79"
+    VERSION = "3.80"
 
     # Sport family mapping for per-sport monotony calculation
     # Multi-sport athletes get inflated total monotony when cross-training
@@ -5372,6 +5377,36 @@ def _compare_files(upstream_files, section11_dir):
     return needs_update, current
 
 
+def _find_orphaned_files(upstream_files, section11_dir):
+    """Find local files inside section11/ that are no longer in the upstream manifest.
+    Returns a sorted list of relative path strings.
+    Excludes manifest.json (local-only), .tmp files, and hidden files/directories."""
+    manifest_paths = set(upstream_files.keys())
+    orphaned = []
+
+    for root, dirs, files in os.walk(section11_dir):
+        # Skip hidden directories (e.g. .git, .DS_Store folders)
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
+
+        for fname in files:
+            # Skip hidden files, .tmp files, and manifest.json
+            if fname.startswith('.'):
+                continue
+            if fname.endswith('.tmp'):
+                continue
+
+            full_path = Path(root) / fname
+            rel_path = str(full_path.relative_to(section11_dir))
+
+            if rel_path == "manifest.json":
+                continue
+
+            if rel_path not in manifest_paths:
+                orphaned.append(rel_path)
+
+    return sorted(orphaned)
+
+
 def do_generate_manifest():
     """
     Generate manifest.json from the current repo directory.
@@ -5552,91 +5587,135 @@ def do_update():
     # Compare hashes against local files
     needs_update, current = _compare_files(upstream_files, target_dir)
     
-    # Nothing to update
+    # Show updates or all-current message
     if not needs_update:
         print(f"✅ All {len(current)} files are current")
-        return
-    
-    # Show diff table
-    print(f"\n   Updates available ({len(needs_update)} file{'s' if len(needs_update) != 1 else ''}):\n")
-    
-    # Calculate column widths for alignment
-    path_width = max(len(u["path"]) for u in needs_update)
-    
-    for u in needs_update:
-        path_padded = u["path"].ljust(path_width)
-        desc = f"   {u['description']}" if u.get('description') else ""
-        print(f"   {path_padded}  [{u['status']}]{desc}")
-    
-    if current:
-        print(f"\n   Already current ({len(current)}):\n")
-        for c in current[:10]:  # Show first 10 to avoid wall of text
-            print(f"   ✅ {c['path']}")
-        if len(current) > 10:
-            print(f"   ... and {len(current) - 10} more")
-    
-    # Ask for confirmation
-    print()
-    try:
-        answer = input(f"   Pull {len(needs_update)} update{'s' if len(needs_update) != 1 else ''}? [y/N] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print("\n   Cancelled")
-        return
-    
-    if answer not in ("y", "yes"):
-        print("   Cancelled")
-        return
-    
-    # Download changed files
-    print()
-    updated = []
-    failed = []
-    
-    for u in needs_update:
-        file_url = f"{SECTION11_REPO_RAW}/{u['path']}"
-        target_path = target_dir / u["path"]
-        
+    else:
+        # Show diff table
+        print(f"\n   Updates available ({len(needs_update)} file{'s' if len(needs_update) != 1 else ''}):\n")
+
+        # Calculate column widths for alignment
+        path_width = max(len(u["path"]) for u in needs_update)
+
+        for u in needs_update:
+            path_padded = u["path"].ljust(path_width)
+            desc = f"   {u['description']}" if u.get('description') else ""
+            print(f"   {path_padded}  [{u['status']}]{desc}")
+
+        if current:
+            print(f"\n   Already current ({len(current)}):\n")
+            for c in current[:10]:  # Show first 10 to avoid wall of text
+                print(f"   ✅ {c['path']}")
+            if len(current) > 10:
+                print(f"   ... and {len(current) - 10} more")
+
+        # Ask for confirmation
+        print()
         try:
-            resp = requests.get(file_url, timeout=30)
-            resp.raise_for_status()
-            
-            # Ensure target directory exists (for new files in new directories)
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Write to temp file, then atomic replace
-            tmp_path = target_path.with_suffix(target_path.suffix + ".tmp")
-            with open(tmp_path, 'wb') as f:
-                f.write(resp.content)
-            os.replace(str(tmp_path), str(target_path))
-            
-            updated.append(u)
-            print(f"   ✅ {u['path']}  [{u['status']}]")
+            answer = input(f"   Pull {len(needs_update)} update{'s' if len(needs_update) != 1 else ''}? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\n   Cancelled")
+            return
+
+        if answer not in ("y", "yes"):
+            print("   Cancelled")
+            return
+
+        # Download changed files
+        print()
+        updated = []
+        failed = []
+
+        for u in needs_update:
+            file_url = f"{SECTION11_REPO_RAW}/{u['path']}"
+            target_path = target_dir / u["path"]
+
+            try:
+                resp = requests.get(file_url, timeout=30)
+                resp.raise_for_status()
+
+                # Ensure target directory exists (for new files in new directories)
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Write to temp file, then atomic replace
+                tmp_path = target_path.with_suffix(target_path.suffix + ".tmp")
+                with open(tmp_path, 'wb') as f:
+                    f.write(resp.content)
+                os.replace(str(tmp_path), str(target_path))
+
+                updated.append(u)
+                print(f"   ✅ {u['path']}  [{u['status']}]")
+            except Exception as e:
+                failed.append(u)
+                print(f"   ❌ {u['path']}  failed: {e}")
+                # Clean up temp file if it exists
+                tmp_path = target_path.with_suffix(target_path.suffix + ".tmp")
+                if tmp_path.exists():
+                    try:
+                        tmp_path.unlink()
+                    except Exception:
+                        pass
+
+        # Save updated manifest.json to section11/
+        try:
+            manifest_target = target_dir / "manifest.json"
+            tmp_manifest = manifest_target.with_suffix(".json.tmp")
+            with open(tmp_manifest, 'w') as f:
+                json.dump(manifest, f, indent=2)
+            os.replace(str(tmp_manifest), str(manifest_target))
         except Exception as e:
-            failed.append(u)
-            print(f"   ❌ {u['path']}  failed: {e}")
-            # Clean up temp file if it exists
-            tmp_path = target_path.with_suffix(target_path.suffix + ".tmp")
-            if tmp_path.exists():
+            print(f"   ⚠️ Could not save manifest.json locally: {e}")
+
+        # Summary
+        if failed:
+            print(f"\n   Updated {len(updated)} file{'s' if len(updated) != 1 else ''}, {len(failed)} failed")
+        elif updated:
+            print(f"\n   ✅ {len(updated)} file{'s' if len(updated) != 1 else ''} updated")
+
+    # --- Orphan cleanup (runs regardless of whether files were updated) ---
+    orphaned = _find_orphaned_files(upstream_files, target_dir)
+
+    if orphaned:
+        print(f"\n   Orphaned files ({len(orphaned)} — no longer in repo):\n")
+
+        path_width = max(len(p) for p in orphaned)
+        for p in orphaned:
+            print(f"   {p.ljust(path_width)}  [removed from repo]")
+
+        print()
+        try:
+            answer = input(f"   Remove {len(orphaned)} orphaned file{'s' if len(orphaned) != 1 else ''}? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\n   Skipped")
+            return
+
+        if answer not in ("y", "yes"):
+            print("   Skipped")
+            return
+
+        removed = 0
+        for p in orphaned:
+            full_path = target_dir / p
+            try:
+                full_path.unlink()
+                removed += 1
+                print(f"   🗑️  {p}")
+            except Exception as e:
+                print(f"   ❌ {p}  failed: {e}")
+
+        # Remove empty parent directories within section11/
+        for p in orphaned:
+            parent = (target_dir / p).parent
+            while parent != target_dir:
                 try:
-                    tmp_path.unlink()
-                except Exception:
-                    pass
-    
-    # Save updated manifest.json to section11/
-    try:
-        manifest_target = target_dir / "manifest.json"
-        tmp_manifest = manifest_target.with_suffix(".json.tmp")
-        with open(tmp_manifest, 'w') as f:
-            json.dump(manifest, f, indent=2)
-        os.replace(str(tmp_manifest), str(manifest_target))
-    except Exception as e:
-        print(f"   ⚠️ Could not save manifest.json locally: {e}")
-    
-    # Summary
-    if failed:
-        print(f"\n   Updated {len(updated)} file{'s' if len(updated) != 1 else ''}, {len(failed)} failed")
-    elif updated:
-        print(f"\n   ✅ {len(updated)} file{'s' if len(updated) != 1 else ''} updated")
+                    parent.rmdir()  # Only succeeds if empty
+                    print(f"   🗑️  {parent.relative_to(target_dir)}/  [empty directory]")
+                except OSError:
+                    break  # Not empty or other error — stop walking up
+                parent = parent.parent
+
+        if removed:
+            print(f"\n   🗑️  {removed} orphaned file{'s' if removed != 1 else ''} removed")
 
 
 def notify_if_updates_available():
