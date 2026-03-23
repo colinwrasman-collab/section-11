@@ -78,9 +78,9 @@ Choose your path:
 
 Your AI needs access to `SECTION_11.md` (the protocol) and `DOSSIER.md` (your profile). How depends on your setup:
 
-- **Local/agentic:** The AI reads directly from the filesystem — no upload needed.
-- **GitHub connector:** If these files are in your connected repo, the AI reads them directly — no upload needed. If only `DOSSIER.md` is in your data repo, upload `SECTION_11.md` separately (or connect the CrankAddict/section-11 repo too).
-- **Cloud connector (Google Drive, OneDrive — [platform support varies](#platform-setup)):** If these files are in your synced folder, the AI reads them through the connector — no upload needed.
+- **Local/agentic:** The AI reads directly from the filesystem.
+- **GitHub connector:** If these files are in your connected repo, the AI reads them directly. If only `DOSSIER.md` is in your data repo, upload `SECTION_11.md` separately (or connect the CrankAddict/section-11 repo too).
+- **Cloud connector (Google Drive, OneDrive — [platform support varies](#platform-setup)):** If these files are in your synced folder, the AI reads them through the connector.
 - **URL fetch (no connector):** If your data repo is public, the AI can fetch raw URLs directly.
 - **Manual upload:** Upload both files to your AI platform or project.
 
