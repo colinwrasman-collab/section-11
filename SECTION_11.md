@@ -2552,6 +2552,8 @@ This subsection defines the formal self-validation and audit metadata structure 
         "stream_2": {
           "planned_tss_delta": 0.93,
           "hard_sessions_planned": 2,
+          "current_week_hard_days_completed": 1,
+          "current_week_hard_days_total": 3,
           "race_proximity": null,
           "next_week_load": 1.19,
           "plan_coverage_current_week": 1.2,
@@ -2619,7 +2621,7 @@ This subsection defines the formal self-validation and audit metadata structure 
 | `phase_detection.confidence`   | string   | "high" / "medium" / "low" — based on signal strength, data quality, stream agreement. |
 | `phase_detection.reason_codes` | array    | Machine-readable classification reasons (e.g., `RACE_IMMINENT_VOLUME_REDUCING`, `BUILD_HISTORY_REDUCED_LOAD_REBOUND_CONFIRMED`, `PLAN_GAP_NEXT_WEEK`, `INSUFFICIENT_LOOKBACK`). |
 | `phase_detection.basis.stream_1` | object | Retrospective features: `ctl_slope`, `acwr_trend`, `hard_day_pattern`, `weeks_available`. |
-| `phase_detection.basis.stream_2` | object | Prospective features: `planned_tss_delta`, `hard_sessions_planned`, `race_proximity`, `next_week_load`, `plan_coverage_current_week`, `plan_coverage_next_week`. |
+| `phase_detection.basis.stream_2` | object | Prospective features: `planned_tss_delta`, `hard_sessions_planned` (retained for compat, superseded by `current_week_hard_days_total`), `current_week_hard_days_completed`, `current_week_hard_days_total`, `race_proximity`, `next_week_load`, `plan_coverage_current_week`, `plan_coverage_next_week`. |
 | `phase_detection.basis.data_quality` | string | "good" / "mixed" / "poor" — penalized by HR-only intensity basis, short lookback. |
 | `phase_detection.basis.stream_agreement` | boolean/null | Whether Stream 1 and Stream 2 suggested the same phase. null if either stream has no opinion. |
 | `phase_detection.previous_phase` | string/null | Phase from last weekly_180d row (feeds hysteresis).                              |
