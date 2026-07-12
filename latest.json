@@ -70,7 +70,7 @@
   },
   "metadata": {
     "athlete_id": "REDACTED",
-    "last_updated": "2026-07-12T00:08:02.110573",
+    "last_updated": "2026-07-12T03:52:28.219003",
     "data_range_days": 7,
     "extended_range_days": 28,
     "version": "3.103"
@@ -135,8 +135,8 @@
       "unavailable": 4
     },
     "phase_context": {
-      "phase": "Base",
-      "phase_week": 1,
+      "phase": "Recovery",
+      "phase_week": 3,
       "amber_threshold": 2,
       "modifier_applied": "default"
     },
@@ -147,9 +147,9 @@
   },
   "history": {
     "available": true,
-    "last_generated": "2026-05-31",
-    "age_days": 41,
-    "total_months": 13,
+    "last_generated": "2026-07-12",
+    "age_days": 0,
+    "total_months": 14,
     "history_confidence": "high"
   },
   "summary": {
@@ -448,15 +448,15 @@
       "note": "No planned workouts in period"
     },
     "phase_detection": {
-      "phase": "Base",
+      "phase": "Recovery",
       "confidence": "medium",
       "reason_codes": [
-        "NO_PLANNED_WORKOUTS"
+        "DECLINING_LOAD_NO_HARD_DAYS"
       ],
       "basis": {
         "stream_1": {
-          "ctl_slope": null,
-          "acwr_trend": null,
+          "ctl_slope": -1.05,
+          "acwr_trend": "rising",
           "hard_day_pattern": 0,
           "weeks_available": 4
         },
@@ -473,14 +473,14 @@
         "data_quality": "good",
         "stream_agreement": null
       },
-      "previous_phase": null,
-      "phase_duration_weeks": 1,
+      "previous_phase": "Recovery",
+      "phase_duration_weeks": 3,
       "dossier_declared": null,
       "dossier_agreement": null
     },
-    "phase_detected": "Base",
+    "phase_detected": "Recovery",
     "phase_triggers": [
-      "NO_PLANNED_WORKOUTS"
+      "DECLINING_LOAD_NO_HARD_DAYS"
     ],
     "seasonal_context": "Peak Race Season",
     "benchmark_indoor": {
@@ -503,7 +503,7 @@
     "p_max": 714,
     "power_model_source": "wellness.sportInfo",
     "vo2max": null,
-    "calculation_timestamp": "2026-07-12T00:08:02.109707",
+    "calculation_timestamp": "2026-07-12T03:52:28.218104",
     "data_quality": {
       "hrv_data_points": 0,
       "rhr_data_points": 0,
