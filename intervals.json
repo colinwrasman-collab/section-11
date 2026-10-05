@@ -1,66 +1,10 @@
 {
-  "generated_at": "2026-10-04T23:23:48.486584",
+  "generated_at": "2026-10-05T02:09:41.792469",
   "version": "3.103",
   "script_hash": "504417168730",
   "scan_hours": 72,
   "retention_days": 14,
   "activities": [
-    {
-      "activity_id": "i188607324",
-      "date": "2026-09-20",
-      "type": "VirtualRun",
-      "name": "Treadmill Running",
-      "interval_summary": [
-        "1x 11m13s 120bpm",
-        "1x 9m13s 147bpm"
-      ],
-      "intervals": [
-        {
-          "type": "WORK",
-          "label": "673s@120bpm77rpm",
-          "duration_secs": 673,
-          "avg_hr": 120,
-          "max_hr": 140,
-          "avg_cadence": 76.79762,
-          "zone": 1
-        },
-        {
-          "type": "WORK",
-          "label": "553s@147bpm72rpm",
-          "duration_secs": 553,
-          "avg_hr": 147,
-          "max_hr": 154,
-          "avg_cadence": 71.95117,
-          "zone": 2
-        }
-      ]
-    },
-    {
-      "activity_id": "i188679164",
-      "date": "2026-09-20",
-      "type": "Ride",
-      "name": "Fort Collins Cycling",
-      "interval_summary": [
-        "1x 43m31s 116bpm"
-      ],
-      "intervals": [
-        {
-          "type": "WORK",
-          "label": "2611s@116bpm",
-          "duration_secs": 2611,
-          "avg_hr": 116,
-          "max_hr": 134,
-          "zone": 1
-        },
-        {
-          "type": "RECOVERY",
-          "duration_secs": 1,
-          "avg_hr": 99,
-          "max_hr": 99,
-          "zone": 1
-        }
-      ]
-    },
     {
       "activity_id": "i190571275",
       "date": "2026-09-23",
@@ -322,6 +266,56 @@
           "max_hr": 165,
           "avg_cadence": 79.14533,
           "zone": 3
+        }
+      ]
+    },
+    {
+      "activity_id": "i193617318",
+      "date": "2026-10-04",
+      "type": "Ride",
+      "name": "Fort Collins Cycling",
+      "interval_summary": [
+        "1x 19m 132bpm",
+        "1x 28m15s 153bpm",
+        "1x 22m21s 132bpm",
+        "1x 80s 112bpm"
+      ],
+      "intervals": [
+        {
+          "type": "RECOVERY",
+          "duration_secs": 1
+        },
+        {
+          "type": "WORK",
+          "label": "1140s@132bpm",
+          "duration_secs": 1140,
+          "avg_hr": 132,
+          "max_hr": 153,
+          "zone": 1
+        },
+        {
+          "type": "WORK",
+          "label": "1695s@153bpm",
+          "duration_secs": 1695,
+          "avg_hr": 153,
+          "max_hr": 186,
+          "zone": 2
+        },
+        {
+          "type": "WORK",
+          "label": "1341s@132bpm",
+          "duration_secs": 1341,
+          "avg_hr": 132,
+          "max_hr": 163,
+          "zone": 1
+        },
+        {
+          "type": "WORK",
+          "label": "80s@112bpm",
+          "duration_secs": 80,
+          "avg_hr": 112,
+          "max_hr": 136,
+          "zone": 1
         }
       ]
     }
